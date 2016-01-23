@@ -2,16 +2,33 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/jmcvetta/randutil"
 )
+
+type hashFields []string
+
+func (f hashFields) String() string {
+	return fmt.Sprintf("%s", []string(f))
+}
+
+func (f *hashFields) Set(s string) error {
+	parts := strings.Split(s, ",")
+	for _, p := range parts {
+		*f = append(*f, p)
+	}
+
+	return nil
+}
 
 var (
 	flHost string
@@ -26,6 +43,8 @@ var (
 	flHashesPrefix  string
 	flStringsPrefix string
 
+	flHashFields hashFields
+
 	pool *redis.Pool
 	wg   sync.WaitGroup
 )
@@ -33,22 +52,49 @@ var (
 func init() {
 	flag.StringVar(&flHost, "H", "", "The redis hostname")
 
-	flag.IntVar(&flNbLists, "nb-lists", 1000, "The number of lists to generate")
-	flag.IntVar(&flNbSets, "nb-sets", 1000, "The number of sets to generate")
-	flag.IntVar(&flNbHashes, "nb-hashes", 1000, "The number of hashes to generate")
-	flag.IntVar(&flNbStrings, "nb-strings", 10000, "The number of strings to generate")
+	flag.IntVar(&flNbLists, "nb-lists", 0, "The number of lists to generate")
+	flag.IntVar(&flNbSets, "nb-sets", 0, "The number of sets to generate")
+	flag.IntVar(&flNbHashes, "nb-hashes", 0, "The number of hashes to generate")
+	flag.IntVar(&flNbStrings, "nb-strings", 0, "The number of strings to generate")
 
 	flag.StringVar(&flListsPrefix, "lists-prefix", "", "The prefix for each list")
 	flag.StringVar(&flSetsPrefix, "sets-prefix", "", "The prefix for each set")
 	flag.StringVar(&flHashesPrefix, "hashes-prefix", "", "The prefix for each hash")
 	flag.StringVar(&flStringsPrefix, "strings-prefix", "", "The prefix for each string")
+
+	flag.Var(&flHashFields, "hash-fields", "List of fields to put in every hash")
 }
 
-func genRandomInts(min, max int) <-chan int {
-	ch := make(chan int, 100000)
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+var (
+	bufPool = sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
+)
+
+func randomString(rng *rand.Rand, n int64) string {
+	buf := bufPool.Get().(*bytes.Buffer)
+	defer bufPool.Put(buf)
+
+	buf.Reset()
+
+	for i := int64(0); i < n; i++ {
+		buf.WriteByte(alphabet[rng.Intn(len(alphabet))])
+	}
+
+	return buf.String()
+}
+
+func genRandomInts(min, max int64) <-chan int64 {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	ch := make(chan int64, 100000)
 	go func() {
 		for {
-			n, _ := randutil.IntRange(min, max)
+			n := rng.Int63n(max) + min
 			ch <- n
 		}
 	}()
@@ -56,12 +102,14 @@ func genRandomInts(min, max int) <-chan int {
 }
 
 func genRandomStrings() <-chan string {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	ch := make(chan string, 100000)
 	go func() {
 		intsCh := genRandomInts(20, 600)
 		for {
 			n := <-intsCh
-			s, _ := randutil.AlphaString(n)
+			s := randomString(rng, n)
 
 			ch <- s
 		}
@@ -69,56 +117,165 @@ func genRandomStrings() <-chan string {
 	return ch
 }
 
+type queueOpFunc func(cmd string, args ...interface{})
+
+type opFunc func(qu queueOpFunc, i int, stringsCh <-chan string, intsCh <-chan int64, smallIntsCh <-chan int64)
+
 type part struct {
 	min int
 	max int
 }
 
-func genLists() {
-	var parts []part
+func generate(p part, op opFunc) {
+	conn := pool.Get()
+	defer func() {
+		conn.Close()
+		wg.Done()
+	}()
 
-	nbPerPart := flNbLists / 8
-	for i := 0; i < flNbLists; i += nbPerPart {
+	intsCh := genRandomInts(5000, 12000)
+	smallIntsCh := genRandomInts(2, 10)
+	stringsCh := genRandomStrings()
+
+	time.Sleep(5 * time.Second)
+
+	var nbQueued int
+	queueOp := func(cmd string, args ...interface{}) {
+		if nbQueued >= 16 {
+			conn.Flush()
+			nbQueued = 0
+		}
+		conn.Send(cmd, args...)
+		nbQueued++
+	}
+
+	for i := p.min; i <= p.max; i++ {
+		op(queueOp, i, stringsCh, intsCh, smallIntsCh)
+	}
+
+	conn.Flush()
+}
+
+const (
+	maxNbListsWorkers   = 20
+	maxNbSetsWorkers    = 20
+	maxNbHashesWorkers  = 20
+	maxNbStringsWorkers = 20
+)
+
+func partition(nb, maxNbWorkers int) (parts []part) {
+	var nbWorkers int
+	if nb > maxNbWorkers {
+		nbWorkers = maxNbWorkers
+	} else {
+		nbWorkers = 1
+	}
+
+	nbPerPart := nb / nbWorkers
+
+	for w := 0; w < nbWorkers; w++ {
 		parts = append(parts, part{
-			min: i,
-			max: i + nbPerPart - 1,
+			min: w * nbPerPart,
+			max: (w+1)*nbPerPart - 1,
+		})
+	}
+	if remainder := nb % nbWorkers; remainder != 0 {
+		parts = append(parts, part{
+			min: nbWorkers * nbPerPart,
+			max: nbWorkers*nbPerPart + remainder - 1,
 		})
 	}
 
+	return
+}
+
+func genLists() {
+	if flNbLists == 0 {
+		return
+	}
+
+	parts := partition(flNbLists, maxNbListsWorkers)
+	wg.Add(len(parts))
+
 	for _, p := range parts {
-		// go func(p part) {
-		conn := pool.Get()
-		defer func() {
-			conn.Close()
-			wg.Done()
-		}()
-
-		intsCh := genRandomInts(5000, 12000)
-		stringsCh := genRandomStrings()
-
-		log.Println("wait 5s for the gen ints and strings to warm up")
-		time.Sleep(5 * time.Second)
-		log.Println("start sending commands")
-
-		var nbQueued int
-		queueOp := func(cmd string, args ...interface{}) {
-			if nbQueued >= 16 {
-				conn.Flush()
-				nbQueued = 0
-			}
-			conn.Send(cmd, args...)
-			nbQueued++
-		}
-
-		for i := 0; i < p.max-p.min; i++ {
+		go generate(p, func(qu queueOpFunc, i int, stringsCh <-chan string, intsCh, smallIntsCh <-chan int64) {
 			keyName := fmt.Sprintf("%slist%d", flListsPrefix, i)
-
 			n := <-intsCh
-			for i := 0; i < n; i++ {
-				queueOp("LPUSH", keyName, <-stringsCh)
+			for i := int64(0); i < n; i++ {
+				qu("LPUSH", keyName, <-stringsCh)
 			}
-		}
-		// }(p)
+		})
+	}
+}
+
+func genSets() {
+	if flNbSets == 0 {
+		return
+	}
+
+	parts := partition(flNbSets, maxNbSetsWorkers)
+	wg.Add(len(parts))
+
+	for _, p := range parts {
+		go generate(p, func(qu queueOpFunc, i int, stringsCh <-chan string, intsCh, smallIntsCh <-chan int64) {
+			keyName := fmt.Sprintf("%sset%d", flSetsPrefix, i)
+			n := <-intsCh
+			for i := int64(0); i < n; i++ {
+				qu("SADD", keyName, <-stringsCh)
+			}
+		})
+	}
+}
+
+func genHashes() {
+	if flNbHashes == 0 {
+		return
+	}
+
+	parts := partition(flNbHashes, maxNbHashesWorkers)
+	wg.Add(len(parts))
+
+	for _, p := range parts {
+		go generate(p, func(qu queueOpFunc, i int, stringsCh <-chan string, intsCh, smallIntsCh <-chan int64) {
+			keyName := fmt.Sprintf("%shash%d", flHashesPrefix, i)
+
+			var args []interface{}
+			if len(flHashFields) > 0 {
+				args = make([]interface{}, len(flHashFields)*2+1)
+				for i, f := range flHashFields {
+					args[i*2+1] = f
+					args[i*2+2] = <-stringsCh
+				}
+			} else {
+				nbFields := int(<-smallIntsCh)
+
+				args = make([]interface{}, nbFields*2+1)
+				for j := 1; j <= nbFields*2; j += 2 {
+					args[j] = <-stringsCh
+					args[j+1] = <-stringsCh
+				}
+			}
+
+			args[0] = keyName
+
+			qu("HMSET", args...)
+		})
+	}
+}
+
+func genStrings() {
+	if flNbStrings == 0 {
+		return
+	}
+
+	parts := partition(flNbStrings, maxNbStringsWorkers)
+	wg.Add(len(parts))
+
+	for _, p := range parts {
+		go generate(p, func(qu queueOpFunc, i int, stringsCh <-chan string, intsCh, smallIntsCh <-chan int64) {
+			keyName := fmt.Sprintf("%sstring%d", flStringsPrefix, i)
+			qu("SET", keyName, <-stringsCh)
+		})
 	}
 }
 
@@ -129,6 +286,8 @@ func printUsageAndAbort() {
 
 func main() {
 	flag.Parse()
+
+	rand.Seed(time.Now().UnixNano())
 
 	if flHost == "" {
 		printUsageAndAbort()
@@ -146,13 +305,27 @@ func main() {
 		},
 	}
 
-	wg.Add(1)
-	go genLists()
-	// go genSets()
-	// go genHashes()
-	// go genStrings()
-
+	log.Println("starting lists generation")
+	genLists()
 	wg.Wait()
+	log.Println("done generating lists")
+
+	log.Println("starting sets generation")
+	genSets()
+	wg.Wait()
+	log.Println("done generating sets")
+
+	log.Println("starting hashes generation")
+	genHashes()
+	wg.Wait()
+	log.Println("done generating hashes")
+
+	log.Println("starting strings generation")
+	genStrings()
+	wg.Wait()
+	log.Println("done generating strings")
+
+	// TODO(vincent): generate sorted sets
 
 	log.Println(pool.Close())
 }
