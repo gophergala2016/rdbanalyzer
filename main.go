@@ -26,6 +26,13 @@ var (
 	sortedSetMetadataCh = make(chan rdbtools.SortedSetMetadata)
 	sortedSetEntriesCh  = make(chan rdbtools.SortedSetEntry)
 
+	nbDbs        int
+	nbStrings    int
+	nbLists      int
+	nbSets       int
+	nbHashes     int
+	nbSortedSets int
+
 	wg sync.WaitGroup
 )
 
@@ -35,62 +42,105 @@ func init() {
 }
 
 func processDBs() {
-	for db := range dbCh {
-		log.Printf("db: %d", db)
+	defer wg.Done()
+	for range dbCh {
+		nbDbs++
+		log.Printf("databases: %d", nbDbs)
 	}
 }
 
 func processStrings() {
-	for str := range stringObjectCh {
-		log.Printf("str: %+v", str)
+	defer wg.Done()
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case _, ok := <-stringObjectCh:
+			if !ok {
+				return
+			}
+			nbStrings++
+		case <-ticker.C:
+			log.Printf("strings: %d", nbStrings)
+		}
 	}
 }
 
 func processListMetadata() {
-	for md := range listMetadataCh {
-		log.Printf("md: %+v", md)
+	defer wg.Done()
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case _, ok := <-listMetadataCh:
+			if !ok {
+				return
+			}
+			nbLists++
+		case <-ticker.C:
+			log.Printf("lists: %d", nbLists)
+		}
 	}
 }
 
 func processListData() {
-	for d := range listDataCh {
-		log.Printf("list data %+v", d)
+	defer wg.Done()
+	for range listDataCh {
 	}
 }
 
 func processSetMetadata() {
-	for md := range setMetadataCh {
-		log.Printf("%+v", md)
+	defer wg.Done()
+	for range setMetadataCh {
+		nbSets++
 	}
 }
 
 func processSetData() {
-	for d := range setDataCh {
-		log.Printf("set data %+v", d)
+	defer wg.Done()
+	for range setDataCh {
 	}
 }
 
 func processHashMetadata() {
-	for md := range hashMetadataCh {
-		log.Printf("%+v", md)
+	defer wg.Done()
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case _, ok := <-hashMetadataCh:
+			if !ok {
+				return
+			}
+			nbHashes++
+		case <-ticker.C:
+			log.Printf("hashes: %d", nbHashes)
+		}
 	}
 }
 
 func processHashData() {
-	for d := range hashDataCh {
-		log.Printf("hash data %+v", d)
+	defer wg.Done()
+	for range hashDataCh {
 	}
 }
 
 func processSortedSetMetadata() {
-	for md := range sortedSetMetadataCh {
-		log.Printf("%+v", md)
+	defer wg.Done()
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case _, ok := <-sortedSetMetadataCh:
+			if !ok {
+				return
+			}
+			nbSortedSets++
+		case <-ticker.C:
+			log.Printf("sorted sets: %d", nbSortedSets)
+		}
 	}
 }
 
 func processSortedSetEntries() {
-	for d := range sortedSetEntriesCh {
-		log.Printf("sorted set entry: %+v", d)
+	defer wg.Done()
+	for range sortedSetEntriesCh {
 	}
 }
 
