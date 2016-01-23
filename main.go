@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/vrischmann/rdbtools"
 )
@@ -140,10 +141,14 @@ func main() {
 	go processSortedSetMetadata()
 	go processSortedSetEntries()
 
+	now := time.Now()
+
 	parser := rdbtools.NewParser(ctx)
 	if err := parser.Parse(f); err != nil {
 		log.Fatalf("unable to parse RDB file. err=%v", err)
 	}
 
 	wg.Wait()
+
+	fmt.Printf("Processing time: %s\n", time.Now().Sub(now))
 }
