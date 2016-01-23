@@ -10,10 +10,6 @@ import (
 	"github.com/vrischmann/rdbtools"
 )
 
-func printUsageAndAbort() {
-	fmt.Println("Usage: rdbanalyzer <rdb file>")
-}
-
 var (
 	dbCh                = make(chan int)
 	stringObjectCh      = make(chan rdbtools.StringObject)
@@ -87,6 +83,15 @@ func processSortedSetEntries() {
 	for d := range sortedSetEntriesCh {
 		log.Printf("sorted set entry: %+v", d)
 	}
+}
+
+func printUsageAndAbort() {
+	fmt.Printf("Usage: rdbanalyzer (-o <output svg file>|-l <listen address>) <rdb file>\n\n")
+	fmt.Println("There's two running modes:")
+	fmt.Println(" - run and then output a SVG file on disk (with -o)")
+	fmt.Println(" - run and then launch a web server which will serve a unique page with the SVG graph (with -l)")
+
+	os.Exit(1)
 }
 
 func main() {
