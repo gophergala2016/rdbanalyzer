@@ -11,6 +11,9 @@ import (
 )
 
 var (
+	flSVGOutput  string
+	flListenAddr string
+
 	dbCh                = make(chan int)
 	stringObjectCh      = make(chan rdbtools.StringObject)
 	listMetadataCh      = make(chan rdbtools.ListMetadata)
@@ -24,6 +27,11 @@ var (
 
 	wg sync.WaitGroup
 )
+
+func init() {
+	flag.StringVar(&flSVGOutput, "o", "", "The SVG output file")
+	flag.StringVar(&flListenAddr, "l", "", "The listen address of the web server")
+}
 
 func processDBs() {
 	for db := range dbCh {
@@ -97,7 +105,7 @@ func printUsageAndAbort() {
 func main() {
 	flag.Parse()
 
-	if flag.NArg() < 1 {
+	if flag.NArg() < 1 || (flSVGOutput == "" && flListenAddr == "") {
 		printUsageAndAbort()
 	}
 
