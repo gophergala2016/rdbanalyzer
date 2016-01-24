@@ -30,19 +30,23 @@ type StringStats struct {
 }
 
 type ListStats struct {
-	Count int
+	Count         int
+	TotalByteSize int
 }
 
 type SetStats struct {
-	Count int
+	Count         int
+	TotalByteSize int
 }
 
 type HashStats struct {
-	Count int
+	Count         int
+	TotalByteSize int
 }
 
 type SortedSetStats struct {
-	Count int
+	Count         int
+	TotalByteSize int
 }
 
 type Stats struct {
@@ -55,6 +59,26 @@ type Stats struct {
 	Sets       SetStats
 	Hashes     HashStats
 	SortedSets SortedSetStats
+}
+
+func (s Stats) SpaceUsage() SpaceUsageProportions {
+	total := float64(s.Strings.TotalByteSize + s.Lists.TotalByteSize + s.Sets.TotalByteSize + s.Hashes.TotalByteSize + s.SortedSets.TotalByteSize)
+
+	return SpaceUsageProportions{
+		Strings:    float64(s.Strings.TotalByteSize) / total,
+		Lists:      float64(s.Lists.TotalByteSize) / total,
+		Sets:       float64(s.Sets.TotalByteSize) / total,
+		Hashes:     float64(s.Hashes.TotalByteSize) / total,
+		SortedSets: float64(s.SortedSets.TotalByteSize) / total,
+	}
+}
+
+type SpaceUsageProportions struct {
+	Strings    float64
+	Lists      float64
+	Sets       float64
+	Hashes     float64
+	SortedSets float64
 }
 
 func writeStats(filename string) error {
