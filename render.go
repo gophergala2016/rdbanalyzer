@@ -108,6 +108,16 @@ func renderPiechart(canvas *svg.SVG, title string, x, y int, slices []pieSlice) 
 	}, len(slices))
 
 	for i, p := range slices {
+		if p.value <= 0.0 {
+			continue
+		}
+
+		style := fmt.Sprintf("fill:#%s", p.color)
+
+		if p.value >= 100.0 {
+			canvas.Circle(x, y, radius, style)
+		}
+
 		startAngle = endAngle
 		endAngle = startAngle + (p.value * 360 / 100)
 
@@ -116,7 +126,6 @@ func renderPiechart(canvas *svg.SVG, title string, x, y int, slices []pieSlice) 
 		x2 := x + xPosInCircle(radius, endAngle)
 		y2 := y + yPosInCircle(radius, endAngle)
 
-		style := fmt.Sprintf("fill:#%s", p.color)
 		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A%d,%d 0 0,1 %d,%d z", x, y, x1, y1, radius, radius, x2, y2), style)
 
 		textTooltips[i].x = x1
@@ -249,9 +258,6 @@ func renderStats() error {
 		if err = generateSVG(output); err != nil {
 			return fmt.Errorf("unable to generate SVG. err=%v", err)
 		}
-		// if err = generateSVG(os.Stdout); err != nil {
-		// 	return fmt.Errorf("unable to generate SVG. err=%v", err)
-		// }
 	case flListenAddr != "":
 		http.HandleFunc("/", generateSVGHandler)
 		if err := http.ListenAndServe(flListenAddr, nil); err != nil {
