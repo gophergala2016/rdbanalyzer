@@ -25,18 +25,6 @@ func generateSVGHandler(w http.ResponseWriter, req *http.Request) {
 	io.Copy(w, &buf)
 }
 
-func toRadians(a float64) float64 {
-	return math.Pi * a / 180
-}
-
-func xPosInCircle(theta float64) int {
-	return int(180 * math.Cos(toRadians(theta)))
-}
-
-func yPosInCircle(theta float64) int {
-	return int(180 * math.Sin(toRadians(theta)))
-}
-
 const (
 	width  = 1200
 	height = 900
@@ -72,8 +60,19 @@ var colors = [...]string{
 	"E00000", "00E000", "0000E0", "E0E000", "E000E0", "00E0E0", "E0E0E0",
 }
 
-// TODO(vincent): figure out a way to put a margin. I suck at SVG.
-func renderPiechart(canvas *svg.SVG, x, y int, percentages []float64) {
+func toRadians(a float64) float64 {
+	return math.Pi * a / 180
+}
+
+func xPosInCircle(radius int, theta float64) int {
+	return int(float64(radius) * math.Cos(toRadians(theta)))
+}
+
+func yPosInCircle(radius int, theta float64) int {
+	return int(float64(radius) * math.Sin(toRadians(theta)))
+}
+
+func renderPiechart(canvas *svg.SVG, x, y, radius int, percentages []float64) {
 	var (
 		startAngle = 0.0
 		endAngle   = 0.0
@@ -83,13 +82,13 @@ func renderPiechart(canvas *svg.SVG, x, y int, percentages []float64) {
 		startAngle = endAngle
 		endAngle = startAngle + (p * 360 / 100)
 
-		x1 := x + xPosInCircle(startAngle)
-		y1 := y + yPosInCircle(startAngle)
-		x2 := x + xPosInCircle(endAngle)
-		y2 := y + yPosInCircle(endAngle)
+		x1 := x + xPosInCircle(radius, startAngle)
+		y1 := y + yPosInCircle(radius, startAngle)
+		x2 := x + xPosInCircle(radius, endAngle)
+		y2 := y + yPosInCircle(radius, endAngle)
 
 		style := fmt.Sprintf("fill:#%s", colors[i])
-		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A180,180 0 0,1 %d,%d z", x, y, x1, y1, x2, y2), style)
+		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A%d,%d 0 0,1 %d,%d z", x, y, x1, y1, radius, radius, x2, y2), style)
 	}
 }
 
@@ -139,7 +138,8 @@ func generateSVG(w io.Writer) error {
 
 	x = x + columnWidth/2
 	y = y + columnHeight/2
-	renderPiechart(canvas, x, y, []float64{
+	radius := columnWidth/2 - insidePiePadding*2
+	renderPiechart(canvas, x, y, radius, []float64{
 		expired, expiring, 100.0 - expired - expiring,
 	})
 
@@ -153,7 +153,7 @@ func generateSVG(w io.Writer) error {
 
 	x = x + columnWidth/2
 	y = y + columnHeight/2
-	renderPiechart(canvas, x, y, []float64{
+	renderPiechart(canvas, x, y, radius, []float64{
 		sup.Strings, sup.Lists,
 		sup.Sets, sup.Hashes,
 		sup.SortedSets,
