@@ -1,19 +1,27 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/ajstarks/svgo"
 	"github.com/vrischmann/rdbtools"
 )
 
 var (
 	flSVGOutput  string
 	flListenAddr string
+
+	flDebugStatsOutput string
+	flDebugOnlyStats   bool
+	flDebugRender      string
 
 	dbCh                = make(chan int)
 	stringObjectCh      = make(chan rdbtools.StringObject)
@@ -39,6 +47,10 @@ var (
 func init() {
 	flag.StringVar(&flSVGOutput, "o", "", "The SVG output file")
 	flag.StringVar(&flListenAddr, "l", "", "The listen address of the web server")
+
+	flag.StringVar(&flDebugStatsOutput, "debug-stats-output", "", "DEBUG: the stats output file")
+	flag.BoolVar(&flDebugOnlyStats, "debug-only-stats", false, "DEBUG: only generate statistics after parsing, without visualization")
+	flag.StringVar(&flDebugRender, "debug-render", "", "DEBUG: only render the visualization of the stats from the provided file")
 }
 
 func processDBs() {
@@ -153,17 +165,60 @@ func printUsageAndAbort() {
 	os.Exit(1)
 }
 
-func main() {
-	flag.Parse()
+func generateSVGHandler(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
 
-	if flag.NArg() < 1 || (flSVGOutput == "" && flListenAddr == "") {
-		printUsageAndAbort()
+	var buf bytes.Buffer
+	if err := generateSVG(&buf); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, err.Error())
+		return
 	}
 
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, &buf)
+}
+
+func generateSVG(w io.Writer) error {
+	width := 1000
+	height := 1000
+
+	canvas := svg.New(w)
+	canvas.Start(width, height)
+	canvas.Circle(250, 250, 125, "fille:none,stroke:black")
+	canvas.End()
+
+	return nil
+}
+
+func renderStats(s *Stats) error {
+	switch {
+	case flSVGOutput != "":
+		output, err := os.Create(flSVGOutput)
+		if err != nil {
+			return fmt.Errorf("unable to create SVG output file. err=%v", err)
+		}
+
+		fmt.Println("generating SVG file...")
+
+		if err = generateSVG(output); err != nil {
+			return fmt.Errorf("unable to generate SVG. err=%v", err)
+		}
+	case flListenAddr != "":
+		http.HandleFunc("/", generateSVGHandler)
+		if err := http.ListenAndServe(flListenAddr, nil); err != nil {
+			return fmt.Errorf("unable to listen on %s. err=%v", flListenAddr, err)
+		}
+	}
+
+	return nil
+}
+
+func parse(filename string) error {
 	file := flag.Arg(0)
 	f, err := os.Open(file)
 	if err != nil {
-		log.Fatalf("unable to open file '%s'. err=%v", file, err)
+		return fmt.Errorf("unable to open file '%s'. err=%v", file, err)
 	}
 
 	ctx := rdbtools.ParserContext{
@@ -180,6 +235,7 @@ func main() {
 	}
 
 	wg.Add(10)
+
 	go processDBs()
 	go processStrings()
 	go processListMetadata()
@@ -193,12 +249,53 @@ func main() {
 
 	now := time.Now()
 
+	// Parsing
+
+	fmt.Printf("parsing RDB file %s\n", file)
+
 	parser := rdbtools.NewParser(ctx)
 	if err := parser.Parse(f); err != nil {
-		log.Fatalf("unable to parse RDB file. err=%v", err)
+		return fmt.Errorf("unable to parse RDB file. err=%v", err)
 	}
 
 	wg.Wait()
 
-	fmt.Printf("Processing time: %s\n", time.Now().Sub(now))
+	fmt.Printf("parsing time: %s\n", time.Now().Sub(now))
+
+	return nil
+}
+
+func main() {
+	flag.Parse()
+
+	requireSVG := !flDebugOnlyStats && flDebugStatsOutput == ""
+	hasSVG := flSVGOutput != "" || flListenAddr != ""
+
+	switch {
+	case flDebugRender != "":
+		if flSVGOutput == "" {
+			fmt.Println("With --debug-regen-svg you need to also pass the -o or -l option")
+			os.Exit(1)
+		}
+	case (requireSVG && flag.NArg() < 1) || (requireSVG && !hasSVG):
+		printUsageAndAbort()
+	}
+
+	if err := parse(flag.Arg(0)); err != nil {
+		log.Fatal(err)
+	}
+
+	stats := generateStats()
+	if flDebugStatsOutput != "" {
+		if err := writeStats(&stats, flDebugStatsOutput); err != nil {
+			log.Fatalf("unable to write stats. err=%v", err)
+		}
+	}
+
+	// Rendering
+	if !flDebugOnlyStats {
+		if err := renderStats(&stats); err != nil {
+			log.Fatalf("unable to render stats. err=%v", err)
+		}
+	}
 }
