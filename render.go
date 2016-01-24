@@ -233,12 +233,6 @@ func generateSVG(w io.Writer) error {
 	y = top + globalStatsRectHeight + rowMargin + columnHeight - legendHeight - insidePiePadding
 	renderPiechartLegend(canvas, x, y, pie)
 
-	// Third column - lists
-
-	x = left + columnWidth*2 + columnSpacing*2
-	y = top + globalStatsRectHeight + rowMargin
-	canvas.Rect(x, y, columnWidth, columnHeight, "fill:blue")
-
 	canvas.Gend()
 	canvas.End()
 
