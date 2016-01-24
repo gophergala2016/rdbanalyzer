@@ -211,7 +211,7 @@ func main() {
 
 	switch {
 	case flDebugRender != "":
-		if flSVGOutput == "" {
+		if !hasSVG {
 			fmt.Println("With --debug-regen-svg you need to also pass the -o or -l option")
 			os.Exit(1)
 		}
