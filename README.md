@@ -5,7 +5,7 @@ This is a tool to analyze your Redis RDB snapshot files. The goal is to output S
 
 It uses [rdbtools](https://github.com/vrischmann/rdbtools) and [svgo](https://github.com/ajstarks/svgo).
 
-Example report: ![RDB report](https://vrischmann.me/upd/wXgkuser)
+[Example report](https://vrischmann.me/upd/wXgkuser)
 
 how to run
 ----------
