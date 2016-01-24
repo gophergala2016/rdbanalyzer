@@ -143,11 +143,21 @@ func generateSVG(w io.Writer) error {
 		expired, expiring, 100.0 - expired - expiring,
 	})
 
-	// Second column - strings
+	// Second column - space usage
 
 	x = left + columnWidth + columnSpacing
 	y = top + globalStatsRectHeight + rowMargin
-	canvas.Rect(x, y, columnWidth, columnHeight, "fill:green")
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:black")
+
+	sup := stats.SpaceUsage()
+
+	x = x + columnWidth/2
+	y = y + columnHeight/2
+	renderPiechart(canvas, x, y, []float64{
+		sup.Strings, sup.Lists,
+		sup.Sets, sup.Hashes,
+		sup.SortedSets,
+	})
 
 	// Third column - lists
 
