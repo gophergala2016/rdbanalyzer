@@ -38,8 +38,8 @@ const (
 	globalStatsRowHeight   = 50
 	globalStatsColumnWidth = (width - left*2 - insideTextPadding*2) / 4
 
-	nbColumns = 3
-	nbRows    = 2
+	nbColumns = 2
+	nbRows    = 1
 
 	rowMargin     = 10
 	columnSpacing = 30
@@ -50,7 +50,7 @@ const (
 	legendPadding      = 5
 	legendWidth        = columnWidth - insidePiePadding*2
 	legendCircleRadius = (legendHeight - legendPadding*2) / 2
-	legendColumnWidth  = (legendWidth - legendPadding*2) / 3
+	legendColumnWidth  = (legendWidth - legendPadding*2) / 5
 
 	fontSize = 16
 )
@@ -170,7 +170,7 @@ func generateSVG(w io.Writer) error {
 
 	x = x + columnWidth/2
 	y = y + (columnHeight-legendHeight)/2
-	radius := (columnHeight - legendHeight - insidePiePadding*3) / 2
+	radius := (columnWidth - legendHeight - insidePiePadding*3) / 2
 	renderPiechart(canvas, x, y, radius, pie)
 
 	// Legend
@@ -208,27 +208,6 @@ func generateSVG(w io.Writer) error {
 
 	x = left + columnWidth*2 + columnSpacing*2
 	y = top + globalStatsRectHeight + rowMargin
-	canvas.Rect(x, y, columnWidth, columnHeight, "fill:blue")
-
-	//
-	// Details: second row
-	//
-
-	// First column - sets
-
-	x = left
-	y = top + globalStatsRectHeight + columnHeight + rowMargin*2
-
-	canvas.Rect(x, y, columnWidth, columnHeight, "fill:red")
-
-	// Second column - hashes
-
-	x = left + columnWidth + columnSpacing
-	canvas.Rect(x, y, columnWidth, columnHeight, "fill:green")
-
-	// Third column - sorted sets
-
-	x = left + columnWidth*2 + columnSpacing*2
 	canvas.Rect(x, y, columnWidth, columnHeight, "fill:blue")
 
 	canvas.Gend()
