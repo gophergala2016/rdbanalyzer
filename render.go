@@ -61,16 +61,23 @@ const (
 	fontSize = 16
 )
 
+var colors = [...]string{
+	"FF0000", "00FF00", "0000FF", "FFFF00", "FF00FF", "00FFFF", "000000",
+	"800000", "008000", "000080", "808000", "800080", "008080", "808080",
+	"C00000", "00C000", "0000C0", "C0C000", "C000C0", "00C0C0", "C0C0C0",
+	"400000", "004000", "000040", "404000", "400040", "004040", "404040",
+	"200000", "002000", "000020", "202000", "200020", "002020", "202020",
+	"600000", "006000", "000060", "606000", "600060", "006060", "606060",
+	"A00000", "00A000", "0000A0", "A0A000", "A000A0", "00A0A0", "A0A0A0",
+	"E00000", "00E000", "0000E0", "E0E000", "E000E0", "00E0E0", "E0E0E0",
+}
+
 // TODO(vincent): figure out a way to put a margin. I suck at SVG.
 func renderPiechart(canvas *svg.SVG, x, y int, percentages []float64) {
 	var (
 		startAngle = 0.0
 		endAngle   = 0.0
 	)
-
-	colors := [...]string{
-		"yellow", "red", "green",
-	}
 
 	for i, p := range percentages {
 		startAngle = endAngle
@@ -81,7 +88,8 @@ func renderPiechart(canvas *svg.SVG, x, y int, percentages []float64) {
 		x2 := x + xPosInCircle(endAngle)
 		y2 := y + yPosInCircle(endAngle)
 
-		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A180,180 0 0,1 %d,%d z", x, y, x1, y1, x2, y2), fmt.Sprintf("fill:%s", colors[i]))
+		style := fmt.Sprintf("fill:#%s", colors[i])
+		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A180,180 0 0,1 %d,%d z", x, y, x1, y1, x2, y2), style)
 	}
 }
 
