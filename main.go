@@ -17,9 +17,8 @@ var (
 	flSVGOutput  string
 	flListenAddr string
 
-	flDebugStatsOutput string
-	flDebugOnlyStats   bool
-	flDebugRender      string
+	flDebugStats  string
+	flDebugRender string
 
 	keysCh = make(chan rdbtools.KeyObject)
 
@@ -43,8 +42,7 @@ func init() {
 	flag.StringVar(&flSVGOutput, "o", "", "The SVG output file")
 	flag.StringVar(&flListenAddr, "l", "", "The listen address of the web server")
 
-	flag.StringVar(&flDebugStatsOutput, "debug-stats-output", "", "DEBUG: the stats output file")
-	flag.BoolVar(&flDebugOnlyStats, "debug-only-stats", false, "DEBUG: only generate statistics after parsing, without visualization")
+	flag.StringVar(&flDebugStats, "debug-stats", "", "DEBUG: the stats output file")
 	flag.StringVar(&flDebugRender, "debug-render", "", "DEBUG: only render the visualization of the stats from the provided file")
 }
 
@@ -210,7 +208,7 @@ func parse(filename string) error {
 func main() {
 	flag.Parse()
 
-	requireSVG := !flDebugOnlyStats && flDebugStatsOutput == ""
+	requireSVG := flDebugStats == "" && flDebugRender != ""
 	hasSVG := flSVGOutput != "" || flListenAddr != ""
 
 	switch {
@@ -243,14 +241,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if flDebugStatsOutput != "" {
-		if err := writeStats(flDebugStatsOutput); err != nil {
+	if flDebugStats != "" {
+		if err := writeStats(flDebugStats); err != nil {
 			log.Fatalf("unable to write stats. err=%v", err)
 		}
 	}
 
 	// Rendering
-	if !flDebugOnlyStats {
+	if flDebugStats == "" {
 		if err := renderStats(); err != nil {
 			log.Fatalf("unable to render stats. err=%v", err)
 		}
