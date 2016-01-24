@@ -1,17 +1,15 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/ajstarks/svgo"
 	"github.com/vrischmann/rdbtools"
 )
 
@@ -22,6 +20,8 @@ var (
 	flDebugStatsOutput string
 	flDebugOnlyStats   bool
 	flDebugRender      string
+
+	keysCh = make(chan rdbtools.KeyObject)
 
 	dbCh                = make(chan int)
 	stringObjectCh      = make(chan rdbtools.StringObject)
@@ -34,12 +34,7 @@ var (
 	sortedSetMetadataCh = make(chan rdbtools.SortedSetMetadata)
 	sortedSetEntriesCh  = make(chan rdbtools.SortedSetEntry)
 
-	nbDbs        int
-	nbStrings    int
-	nbLists      int
-	nbSets       int
-	nbHashes     int
-	nbSortedSets int
+	stats Stats
 
 	wg sync.WaitGroup
 )
@@ -56,40 +51,46 @@ func init() {
 func processDBs() {
 	defer wg.Done()
 	for range dbCh {
-		nbDbs++
-		log.Printf("databases: %d", nbDbs)
+		stats.Database.Count++
+	}
+}
+
+func processKeys() {
+	defer wg.Done()
+	for key := range keysCh {
+		stats.Keys.Count++
+		now := time.Now()
+
+		switch {
+		case key.ExpiryTime.IsZero():
+			break
+		case key.ExpiryTime.After(now):
+			stats.Keys.Expiring++
+		case key.ExpiryTime.Before(now):
+			stats.Keys.Expired++
+		}
 	}
 }
 
 func processStrings() {
 	defer wg.Done()
-	ticker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case _, ok := <-stringObjectCh:
-			if !ok {
-				return
-			}
-			nbStrings++
-		case <-ticker.C:
-			log.Printf("strings: %d", nbStrings)
-		}
+	for obj := range stringObjectCh {
+		keysCh <- obj.Key
+
+		stats.Strings.Count++
+
+		// TODO(vincent): this will fail if it's the wrong type, fix it !
+		stringLength := len(obj.Value.([]uint8))
+		stats.Strings.TotalByteSize += stringLength
 	}
 }
 
 func processListMetadata() {
 	defer wg.Done()
-	ticker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case _, ok := <-listMetadataCh:
-			if !ok {
-				return
-			}
-			nbLists++
-		case <-ticker.C:
-			log.Printf("lists: %d", nbLists)
-		}
+	for obj := range listMetadataCh {
+		keysCh <- obj.Key
+
+		stats.Lists.Count++
 	}
 }
 
@@ -101,8 +102,9 @@ func processListData() {
 
 func processSetMetadata() {
 	defer wg.Done()
-	for range setMetadataCh {
-		nbSets++
+	for obj := range setMetadataCh {
+		keysCh <- obj.Key
+		stats.Sets.Count++
 	}
 }
 
@@ -114,17 +116,9 @@ func processSetData() {
 
 func processHashMetadata() {
 	defer wg.Done()
-	ticker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case _, ok := <-hashMetadataCh:
-			if !ok {
-				return
-			}
-			nbHashes++
-		case <-ticker.C:
-			log.Printf("hashes: %d", nbHashes)
-		}
+	for obj := range hashMetadataCh {
+		keysCh <- obj.Key
+		stats.Hashes.Count++
 	}
 }
 
@@ -136,17 +130,9 @@ func processHashData() {
 
 func processSortedSetMetadata() {
 	defer wg.Done()
-	ticker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case _, ok := <-sortedSetMetadataCh:
-			if !ok {
-				return
-			}
-			nbSortedSets++
-		case <-ticker.C:
-			log.Printf("sorted sets: %d", nbSortedSets)
-		}
+	for obj := range sortedSetMetadataCh {
+		keysCh <- obj.Key
+		stats.SortedSets.Count++
 	}
 }
 
@@ -163,55 +149,6 @@ func printUsageAndAbort() {
 	fmt.Println(" - run and then launch a web server which will serve a unique page with the SVG graph (with -l)")
 
 	os.Exit(1)
-}
-
-func generateSVGHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("Content-Type", "image/svg+xml")
-
-	var buf bytes.Buffer
-	if err := generateSVG(&buf); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		io.WriteString(w, err.Error())
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	io.Copy(w, &buf)
-}
-
-func generateSVG(w io.Writer) error {
-	width := 1000
-	height := 1000
-
-	canvas := svg.New(w)
-	canvas.Start(width, height)
-	canvas.Circle(250, 250, 125, "fille:none,stroke:black")
-	canvas.End()
-
-	return nil
-}
-
-func renderStats(s *Stats) error {
-	switch {
-	case flSVGOutput != "":
-		output, err := os.Create(flSVGOutput)
-		if err != nil {
-			return fmt.Errorf("unable to create SVG output file. err=%v", err)
-		}
-
-		fmt.Println("generating SVG file...")
-
-		if err = generateSVG(output); err != nil {
-			return fmt.Errorf("unable to generate SVG. err=%v", err)
-		}
-	case flListenAddr != "":
-		http.HandleFunc("/", generateSVGHandler)
-		if err := http.ListenAndServe(flListenAddr, nil); err != nil {
-			return fmt.Errorf("unable to listen on %s. err=%v", flListenAddr, err)
-		}
-	}
-
-	return nil
 }
 
 func parse(filename string) error {
@@ -237,6 +174,7 @@ func parse(filename string) error {
 	wg.Add(10)
 
 	go processDBs()
+	go processKeys()
 	go processStrings()
 	go processListMetadata()
 	go processListData()
@@ -277,6 +215,20 @@ func main() {
 			fmt.Println("With --debug-regen-svg you need to also pass the -o or -l option")
 			os.Exit(1)
 		}
+
+		data, err := ioutil.ReadFile(flDebugRender)
+		if err != nil {
+			log.Fatalf("unable to read stats file '%s'. err=%v", flDebugRender, err)
+		}
+
+		if err := json.Unmarshal(data, &stats); err != nil {
+			log.Fatalf("unable to unmarshal stats. err=%v", err)
+		}
+
+		if err := renderStats(&stats); err != nil {
+			log.Fatalf("unable to render stats. err=%v", err)
+		}
+
 	case (requireSVG && flag.NArg() < 1) || (requireSVG && !hasSVG):
 		printUsageAndAbort()
 	}
@@ -285,16 +237,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	stats := generateStats()
 	if flDebugStatsOutput != "" {
-		if err := writeStats(&stats, flDebugStatsOutput); err != nil {
+		if err := writeStats(flDebugStatsOutput); err != nil {
 			log.Fatalf("unable to write stats. err=%v", err)
 		}
 	}
 
 	// Rendering
 	if !flDebugOnlyStats {
-		if err := renderStats(&stats); err != nil {
+		if err := renderStats(); err != nil {
 			log.Fatalf("unable to render stats. err=%v", err)
 		}
 	}
