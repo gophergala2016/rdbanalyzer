@@ -208,7 +208,7 @@ func parse(filename string) error {
 func main() {
 	flag.Parse()
 
-	requireSVG := flDebugStats == "" && flDebugRender != ""
+	requireSVG := (flDebugStats != "" && flDebugRender == "") || (flDebugStats == "")
 	hasSVG := flSVGOutput != "" || flListenAddr != ""
 
 	switch {
