@@ -83,7 +83,6 @@ func yPosInCircle(radius int, theta float64) int {
 type pieSlice struct {
 	name  string
 	value float64
-	text  string
 	color string
 }
 
@@ -102,7 +101,13 @@ func renderPiechart(canvas *svg.SVG, title string, x, y int, slices []pieSlice) 
 		endAngle   = 0.0
 	)
 
-	for _, p := range slices {
+	textTooltips := make([]struct {
+		x     int
+		y     int
+		value float64
+	}, len(slices))
+
+	for i, p := range slices {
 		startAngle = endAngle
 		endAngle = startAngle + (p.value * 360 / 100)
 
@@ -113,6 +118,14 @@ func renderPiechart(canvas *svg.SVG, title string, x, y int, slices []pieSlice) 
 
 		style := fmt.Sprintf("fill:#%s", p.color)
 		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A%d,%d 0 0,1 %d,%d z", x, y, x1, y1, radius, radius, x2, y2), style)
+
+		textTooltips[i].x = x1
+		textTooltips[i].y = y1
+		textTooltips[i].value = p.value
+	}
+
+	for _, t := range textTooltips {
+		canvas.Text(t.x, t.y, fmt.Sprintf("%0.2f%%", t.value), "fill:white;font-size:20pt;stroke:black;stroke-width:1px")
 	}
 }
 
@@ -175,9 +188,9 @@ func generateSVG(w io.Writer) error {
 	expired := stats.Keys.ExpiredProportion()
 	expiring := stats.Keys.ExpiringProportion()
 	pie := []pieSlice{
-		{"expired", expired, "%0.2f%", colors[0]},
-		{"expiring", expiring, "%0.2f%", colors[1]},
-		{"normal", 100.0 - expired - expiring, "%0.2f%", colors[2]},
+		{"expired", expired, colors[0]},
+		{"expiring", expiring, colors[1]},
+		{"normal", 100.0 - expired - expiring, colors[2]},
 	}
 
 	renderPiechart(canvas, "keys status", x, y, pie)
@@ -196,11 +209,11 @@ func generateSVG(w io.Writer) error {
 
 	sup := stats.SpaceUsage()
 	pie = []pieSlice{
-		{"strings", sup.Strings, "%0.2f%", colors[0]},
-		{"lists", sup.Lists, "%0.2f%", colors[1]},
-		{"sets", sup.Sets, "%0.2f%", colors[2]},
-		{"hashes", sup.Hashes, "%0.2f%", colors[3]},
-		{"zsets", sup.SortedSets, "%0.2f%", colors[4]},
+		{"strings", sup.Strings, colors[0]},
+		{"lists", sup.Lists, colors[1]},
+		{"sets", sup.Sets, colors[2]},
+		{"hashes", sup.Hashes, colors[3]},
+		{"zsets", sup.SortedSets, colors[4]},
 	}
 
 	renderPiechart(canvas, "space usage", x, y, pie)
