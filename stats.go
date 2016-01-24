@@ -65,11 +65,11 @@ func (s Stats) SpaceUsage() SpaceUsageProportions {
 	total := float64(s.Strings.TotalByteSize + s.Lists.TotalByteSize + s.Sets.TotalByteSize + s.Hashes.TotalByteSize + s.SortedSets.TotalByteSize)
 
 	return SpaceUsageProportions{
-		Strings:    float64(s.Strings.TotalByteSize) / total,
-		Lists:      float64(s.Lists.TotalByteSize) / total,
-		Sets:       float64(s.Sets.TotalByteSize) / total,
-		Hashes:     float64(s.Hashes.TotalByteSize) / total,
-		SortedSets: float64(s.SortedSets.TotalByteSize) / total,
+		Strings:    float64(s.Strings.TotalByteSize) / total * 100,
+		Lists:      float64(s.Lists.TotalByteSize) / total * 100,
+		Sets:       float64(s.Sets.TotalByteSize) / total * 100,
+		Hashes:     float64(s.Hashes.TotalByteSize) / total * 100,
+		SortedSets: float64(s.SortedSets.TotalByteSize) / total * 100,
 	}
 }
 
