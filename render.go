@@ -46,6 +46,12 @@ const (
 	columnWidth   = (width - left*2 - columnSpacing*(nbColumns-1)) / nbColumns
 	columnHeight  = (height - top*2 - globalStatsRectHeight - rowMargin*nbRows) / nbRows
 
+	legendHeight       = 40
+	legendPadding      = 5
+	legendWidth        = columnWidth - insidePiePadding*2
+	legendCircleRadius = (legendHeight - legendPadding*2) / 2
+	legendColumnWidth  = (legendWidth - legendPadding*2) / 3
+
 	fontSize = 16
 )
 
@@ -72,24 +78,45 @@ func yPosInCircle(radius int, theta float64) int {
 	return int(float64(radius) * math.Sin(toRadians(theta)))
 }
 
-func renderPiechart(canvas *svg.SVG, x, y, radius int, percentages []float64) {
+type pieSlice struct {
+	name  string
+	value float64
+	color string
+}
+
+func renderPiechart(canvas *svg.SVG, x, y, radius int, slices []pieSlice) {
 	var (
 		startAngle = 0.0
 		endAngle   = 0.0
 	)
 
-	for i, p := range percentages {
+	for _, p := range slices {
 		startAngle = endAngle
-		endAngle = startAngle + (p * 360 / 100)
+		endAngle = startAngle + (p.value * 360 / 100)
 
 		x1 := x + xPosInCircle(radius, startAngle)
 		y1 := y + yPosInCircle(radius, startAngle)
 		x2 := x + xPosInCircle(radius, endAngle)
 		y2 := y + yPosInCircle(radius, endAngle)
 
-		style := fmt.Sprintf("fill:#%s", colors[i])
+		style := fmt.Sprintf("fill:#%s", p.color)
 		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A%d,%d 0 0,1 %d,%d z", x, y, x1, y1, radius, radius, x2, y2), style)
 	}
+}
+
+func renderPiechartLegend(canvas *svg.SVG, x, y int, slices []pieSlice) {
+	canvas.Gstyle("font-size:10pt;fill:black")
+	canvas.Rect(x, y, legendWidth, legendHeight, "fill:white")
+
+	y1 := y + legendCircleRadius + legendPadding
+	for i, p := range slices {
+		x1 := x + legendCircleRadius + legendPadding + (i * legendColumnWidth)
+
+		canvas.Circle(x1, y1, legendCircleRadius, fmt.Sprintf("fill:#%s", p.color))
+		canvas.Text(x1+legendCircleRadius+legendPadding, y1, p.name)
+	}
+
+	canvas.Gend()
 }
 
 func generateSVG(w io.Writer) error {
@@ -135,13 +162,22 @@ func generateSVG(w io.Writer) error {
 
 	expired := stats.Keys.ExpiredProportion()
 	expiring := stats.Keys.ExpiringProportion()
+	pie := []pieSlice{
+		{"expired", expired, colors[0]},
+		{"expiring", expiring, colors[1]},
+		{"normal", 100.0 - expired - expiring, colors[2]},
+	}
 
 	x = x + columnWidth/2
-	y = y + columnHeight/2
-	radius := columnWidth/2 - insidePiePadding*2
-	renderPiechart(canvas, x, y, radius, []float64{
-		expired, expiring, 100.0 - expired - expiring,
-	})
+	y = y + (columnHeight-legendHeight)/2
+	radius := (columnHeight - legendHeight - insidePiePadding*3) / 2
+	renderPiechart(canvas, x, y, radius, pie)
+
+	// Legend
+
+	x = left + insidePiePadding
+	y = top + globalStatsRectHeight + rowMargin + columnHeight - legendHeight - insidePiePadding
+	renderPiechartLegend(canvas, x, y, pie)
 
 	// Second column - space usage
 
@@ -150,14 +186,23 @@ func generateSVG(w io.Writer) error {
 	canvas.Rect(x, y, columnWidth, columnHeight, "fill:black")
 
 	sup := stats.SpaceUsage()
+	pie = []pieSlice{
+		{"strings", sup.Strings, colors[0]},
+		{"lists", sup.Lists, colors[1]},
+		{"sets", sup.Sets, colors[2]},
+		{"hashes", sup.Hashes, colors[3]},
+		{"zsets", sup.SortedSets, colors[4]},
+	}
 
 	x = x + columnWidth/2
-	y = y + columnHeight/2
-	renderPiechart(canvas, x, y, radius, []float64{
-		sup.Strings, sup.Lists,
-		sup.Sets, sup.Hashes,
-		sup.SortedSets,
-	})
+	y = y + (columnHeight-legendHeight)/2
+	renderPiechart(canvas, x, y, radius, pie)
+
+	// Legend
+
+	x = left + columnWidth + columnSpacing + insidePiePadding
+	y = top + globalStatsRectHeight + rowMargin + columnHeight - legendHeight - insidePiePadding
+	renderPiechartLegend(canvas, x, y, pie)
 
 	// Third column - lists
 
