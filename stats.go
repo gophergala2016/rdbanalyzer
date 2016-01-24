@@ -55,7 +55,7 @@ func writeStats(filename string) error {
 		return fmt.Errorf("unable to create file '%s'. err=%v", filename, err)
 	}
 
-	data, err := json.MarshalIndent(s, "", "  ")
+	data, err := json.MarshalIndent(&stats, "", "  ")
 	if err != nil {
 		return fmt.Errorf("unable to marshal stats. err=%v", err)
 	}
