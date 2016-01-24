@@ -25,12 +25,102 @@ func generateSVGHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func generateSVG(w io.Writer) error {
-	width := 1000
-	height := 1000
+
+	const (
+		width  = 1200
+		height = 900
+		top    = 30
+		left   = 30
+
+		insideTextPadding = 10
+
+		globalStatsRectHeight  = 100
+		globalStatsRowHeight   = 50
+		globalStatsColumnWidth = (width - left*2 - insideTextPadding*2) / 4
+
+		nbColumns = 3
+		nbRows    = 2
+
+		rowMargin     = 30
+		columnSpacing = 30
+		columnWidth   = (width - left*2 - columnSpacing*(nbColumns-1)) / nbColumns
+		columnHeight  = (height - top*2 - globalStatsRectHeight - rowMargin*nbRows) / nbRows
+
+		fontSize = 16
+	)
 
 	canvas := svg.New(w)
 	canvas.Start(width, height)
-	canvas.Circle(250, 250, 125, "fille:none,stroke:black")
+	canvas.Title("RDB statistics")
+	canvas.Rect(0, 0, width, height, "fill:none;stroke:black;stroke-width:3") // global back rectangle
+
+	// Global statistics
+	//  - top row that spans all document
+	//  - 100 high
+	x := left
+	y := top
+	canvas.Rect(x, y, width-left*2, globalStatsRectHeight, "fill:black") // account for the margins
+
+	canvas.Gstyle(fmt.Sprintf("font-family:Calibri,sans-serif;font-size:%dpt;fill:white", fontSize))
+
+	// First row
+	x = left + insideTextPadding
+	y = top + insideTextPadding + fontSize
+	canvas.Text(x, y, fmt.Sprintf("Databases: %d", stats.Database.Count))
+	canvas.Text(x+globalStatsColumnWidth, y, fmt.Sprintf("Keys: %d", stats.Keys.Count))
+	canvas.Text(x+globalStatsColumnWidth*2, y, fmt.Sprintf("Strings: %d", stats.Strings.Count))
+
+	// Second row
+	x = left + insideTextPadding
+	y = top + insideTextPadding + fontSize + globalStatsRowHeight + insideTextPadding
+	canvas.Text(x, y, fmt.Sprintf("Lists: %d", stats.Lists.Count))
+	canvas.Text(x+globalStatsColumnWidth, y, fmt.Sprintf("Sets: %d", stats.Sets.Count))
+	canvas.Text(x+globalStatsColumnWidth*2, y, fmt.Sprintf("Hashes: %d", stats.Hashes.Count))
+	canvas.Text(x+globalStatsColumnWidth*3, y, fmt.Sprintf("Sorted Sets: %d", stats.SortedSets.Count))
+
+	//
+	// Details: first row
+	//
+
+	// First column - keys
+
+	x = left
+	y = top + globalStatsRectHeight + rowMargin
+
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:red")
+
+	// Second column - strings
+
+	x = left + columnWidth + columnSpacing
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:green")
+
+	// Third column - lists
+
+	x = left + columnWidth*2 + columnSpacing*2
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:blue")
+
+	//
+	// Details: second row
+	//
+
+	// First column - sets
+
+	x = left
+	y = top + globalStatsRectHeight + columnHeight + rowMargin*2
+
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:red")
+
+	// Second column - hashes
+
+	x = left + columnWidth + columnSpacing
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:green")
+
+	// Third column - sorted sets
+
+	x = left + columnWidth*2 + columnSpacing*2
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:blue")
+
+	canvas.Gend()
 	canvas.End()
 
 	return nil
