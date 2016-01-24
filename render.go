@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 
@@ -24,31 +25,66 @@ func generateSVGHandler(w http.ResponseWriter, req *http.Request) {
 	io.Copy(w, &buf)
 }
 
-func generateSVG(w io.Writer) error {
+func toRadians(a float64) float64 {
+	return math.Pi * a / 180
+}
 
-	const (
-		width  = 1200
-		height = 900
-		top    = 30
-		left   = 30
+func xPosInCircle(theta float64) int {
+	return int(180 * math.Cos(toRadians(theta)))
+}
 
-		insideTextPadding = 10
+func yPosInCircle(theta float64) int {
+	return int(180 * math.Sin(toRadians(theta)))
+}
 
-		globalStatsRectHeight  = 100
-		globalStatsRowHeight   = 50
-		globalStatsColumnWidth = (width - left*2 - insideTextPadding*2) / 4
+const (
+	width  = 1200
+	height = 900
+	top    = 30
+	left   = 30
 
-		nbColumns = 3
-		nbRows    = 2
+	insideTextPadding = 10
+	insidePiePadding  = 10
 
-		rowMargin     = 30
-		columnSpacing = 30
-		columnWidth   = (width - left*2 - columnSpacing*(nbColumns-1)) / nbColumns
-		columnHeight  = (height - top*2 - globalStatsRectHeight - rowMargin*nbRows) / nbRows
+	globalStatsRectHeight  = 100
+	globalStatsRowHeight   = 50
+	globalStatsColumnWidth = (width - left*2 - insideTextPadding*2) / 4
 
-		fontSize = 16
+	nbColumns = 3
+	nbRows    = 2
+
+	rowMargin     = 10
+	columnSpacing = 30
+	columnWidth   = (width - left*2 - columnSpacing*(nbColumns-1)) / nbColumns
+	columnHeight  = (height - top*2 - globalStatsRectHeight - rowMargin*nbRows) / nbRows
+
+	fontSize = 16
+)
+
+func renderPiechart(canvas *svg.SVG, x, y int, percentages []float64) {
+	var (
+		startAngle = 0.0
+		endAngle   = 0.0
 	)
 
+	colors := [...]string{
+		"yellow", "red", "green",
+	}
+
+	for i, p := range percentages {
+		startAngle = endAngle
+		endAngle = startAngle + (p * 360 / 100)
+
+		x1 := x + xPosInCircle(startAngle)
+		y1 := y + yPosInCircle(startAngle)
+		x2 := x + xPosInCircle(endAngle)
+		y2 := y + yPosInCircle(endAngle)
+
+		canvas.Path(fmt.Sprintf("M%d,%d L%d,%d A180,180 0 0,1 %d,%d z", x, y, x1, y1, x2, y2), fmt.Sprintf("fill:%s", colors[i]))
+	}
+}
+
+func generateSVG(w io.Writer) error {
 	canvas := svg.New(w)
 	canvas.Start(width, height)
 	canvas.Title("RDB statistics")
@@ -87,16 +123,27 @@ func generateSVG(w io.Writer) error {
 	x = left
 	y = top + globalStatsRectHeight + rowMargin
 
-	canvas.Rect(x, y, columnWidth, columnHeight, "fill:red")
+	canvas.Rect(x, y, columnWidth, columnHeight, "fill:black")
+
+	expired := stats.Keys.ExpiredProportion()
+	expiring := stats.Keys.ExpiringProportion()
+
+	x = x + columnWidth/2
+	y = y + columnHeight/2
+	renderPiechart(canvas, x, y, []float64{
+		expired, expiring, 100.0 - expired - expiring,
+	})
 
 	// Second column - strings
 
 	x = left + columnWidth + columnSpacing
+	y = top + globalStatsRectHeight + rowMargin
 	canvas.Rect(x, y, columnWidth, columnHeight, "fill:green")
 
 	// Third column - lists
 
 	x = left + columnWidth*2 + columnSpacing*2
+	y = top + globalStatsRectHeight + rowMargin
 	canvas.Rect(x, y, columnWidth, columnHeight, "fill:blue")
 
 	//
@@ -139,6 +186,9 @@ func renderStats() error {
 		if err = generateSVG(output); err != nil {
 			return fmt.Errorf("unable to generate SVG. err=%v", err)
 		}
+		// if err = generateSVG(os.Stdout); err != nil {
+		// 	return fmt.Errorf("unable to generate SVG. err=%v", err)
+		// }
 	case flListenAddr != "":
 		http.HandleFunc("/", generateSVGHandler)
 		if err := http.ListenAndServe(flListenAddr, nil); err != nil {
