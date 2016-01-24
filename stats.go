@@ -16,6 +16,14 @@ type KeyStats struct {
 	Expiring int
 }
 
+func (s KeyStats) ExpiredProportion() float64 {
+	return float64(s.Expired) / float64(s.Count) * 100
+}
+
+func (s KeyStats) ExpiringProportion() float64 {
+	return float64(s.Expiring) / float64(s.Count) * 100
+}
+
 type StringStats struct {
 	Count         int
 	TotalByteSize int
