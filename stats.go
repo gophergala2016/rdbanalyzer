@@ -10,24 +10,46 @@ type DatabaseStats struct {
 	Count int
 }
 
+type KeyStats struct {
+	Count    int
+	Expired  int
+	Expiring int
+}
+
 type StringStats struct {
 	Count         int
 	TotalByteSize int
 }
 
+type ListStats struct {
+	Count int
+}
+
+type SetStats struct {
+	Count int
+}
+
+type HashStats struct {
+	Count int
+}
+
+type SortedSetStats struct {
+	Count int
+}
+
 type Stats struct {
-	Database DatabaseStats
-	Strings  StringStats
+	// TODO(vincent): locking ?
+
+	Database   DatabaseStats
+	Keys       KeyStats
+	Strings    StringStats
+	Lists      ListStats
+	Sets       SetStats
+	Hashes     HashStats
+	SortedSets SortedSetStats
 }
 
-func generateStats() (s Stats) {
-	s.Database.Count = nbDbs
-	s.Strings.Count = nbStrings
-
-	return
-}
-
-func writeStats(s *Stats, filename string) error {
+func writeStats(filename string) error {
 	f, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("unable to create file '%s'. err=%v", filename, err)
