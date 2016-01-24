@@ -61,6 +61,7 @@ const (
 	fontSize = 16
 )
 
+// TODO(vincent): figure out a way to put a margin. I suck at SVG.
 func renderPiechart(canvas *svg.SVG, x, y int, percentages []float64) {
 	var (
 		startAngle = 0.0
