@@ -225,7 +225,7 @@ func main() {
 			log.Fatalf("unable to unmarshal stats. err=%v", err)
 		}
 
-		if err := renderStats(&stats); err != nil {
+		if err := renderStats(); err != nil {
 			log.Fatalf("unable to render stats. err=%v", err)
 		}
 
