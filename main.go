@@ -96,7 +96,8 @@ func processListMetadata() {
 
 func processListData() {
 	defer wg.Done()
-	for range listDataCh {
+	for obj := range listDataCh {
+		stats.Lists.TotalByteSize += len(obj.([]byte))
 	}
 }
 
@@ -110,7 +111,8 @@ func processSetMetadata() {
 
 func processSetData() {
 	defer wg.Done()
-	for range setDataCh {
+	for obj := range setDataCh {
+		stats.Sets.TotalByteSize += len(obj.([]byte))
 	}
 }
 
@@ -124,7 +126,9 @@ func processHashMetadata() {
 
 func processHashData() {
 	defer wg.Done()
-	for range hashDataCh {
+	for entry := range hashDataCh {
+		stats.Hashes.TotalByteSize += len(entry.Key.([]uint8))
+		stats.Hashes.TotalByteSize += len(entry.Value.([]uint8))
 	}
 }
 
