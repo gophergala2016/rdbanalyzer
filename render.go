@@ -52,6 +52,8 @@ const (
 	legendCircleRadius = (legendHeight - legendPadding*2) / 2
 	legendColumnWidth  = (legendWidth - legendPadding*2) / 5
 
+	titleHeight = 50
+
 	fontSize = 16
 )
 
@@ -81,10 +83,20 @@ func yPosInCircle(radius int, theta float64) int {
 type pieSlice struct {
 	name  string
 	value float64
+	text  string
 	color string
 }
 
-func renderPiechart(canvas *svg.SVG, x, y, radius int, slices []pieSlice) {
+func renderPiechart(canvas *svg.SVG, title string, x, y int, slices []pieSlice) {
+	x1 := x + (columnWidth-insidePiePadding*2-60)/2 // 60 is a guesstimate of the width of the bounding box for the title. Don't know how to get it right now.
+	y1 := y + insidePiePadding + titleHeight
+	canvas.Text(x1, y1, title, "fill:white")
+
+	x = x + columnWidth/2
+	y = y + (columnHeight-legendHeight)/2
+
+	radius := (columnWidth - legendHeight - insidePiePadding*3) / 2
+
 	var (
 		startAngle = 0.0
 		endAngle   = 0.0
@@ -163,15 +175,12 @@ func generateSVG(w io.Writer) error {
 	expired := stats.Keys.ExpiredProportion()
 	expiring := stats.Keys.ExpiringProportion()
 	pie := []pieSlice{
-		{"expired", expired, colors[0]},
-		{"expiring", expiring, colors[1]},
-		{"normal", 100.0 - expired - expiring, colors[2]},
+		{"expired", expired, "%0.2f%", colors[0]},
+		{"expiring", expiring, "%0.2f%", colors[1]},
+		{"normal", 100.0 - expired - expiring, "%0.2f%", colors[2]},
 	}
 
-	x = x + columnWidth/2
-	y = y + (columnHeight-legendHeight)/2
-	radius := (columnWidth - legendHeight - insidePiePadding*3) / 2
-	renderPiechart(canvas, x, y, radius, pie)
+	renderPiechart(canvas, "keys status", x, y, pie)
 
 	// Legend
 
@@ -187,16 +196,14 @@ func generateSVG(w io.Writer) error {
 
 	sup := stats.SpaceUsage()
 	pie = []pieSlice{
-		{"strings", sup.Strings, colors[0]},
-		{"lists", sup.Lists, colors[1]},
-		{"sets", sup.Sets, colors[2]},
-		{"hashes", sup.Hashes, colors[3]},
-		{"zsets", sup.SortedSets, colors[4]},
+		{"strings", sup.Strings, "%0.2f%", colors[0]},
+		{"lists", sup.Lists, "%0.2f%", colors[1]},
+		{"sets", sup.Sets, "%0.2f%", colors[2]},
+		{"hashes", sup.Hashes, "%0.2f%", colors[3]},
+		{"zsets", sup.SortedSets, "%0.2f%", colors[4]},
 	}
 
-	x = x + columnWidth/2
-	y = y + (columnHeight-legendHeight)/2
-	renderPiechart(canvas, x, y, radius, pie)
+	renderPiechart(canvas, "space usage", x, y, pie)
 
 	// Legend
 
