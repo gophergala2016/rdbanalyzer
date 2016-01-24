@@ -229,6 +229,8 @@ func main() {
 			log.Fatalf("unable to render stats. err=%v", err)
 		}
 
+		return
+
 	case (requireSVG && flag.NArg() < 1) || (requireSVG && !hasSVG):
 		printUsageAndAbort()
 	}
